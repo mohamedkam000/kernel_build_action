@@ -1,5 +1,5 @@
 name: 'Android Kernel Build Action'
-description: "A action to built android kernel."
+description: "An action to build android kernels"
 
 branding:
   icon: 'activity'
@@ -7,7 +7,7 @@ branding:
 
 inputs:
   kernel-url:
-    description: 'Kernel Source Url'
+    description: 'Kernel Source URL'
     required: true
   depth:
     required: false
@@ -16,7 +16,7 @@ inputs:
     required: false
     default: false
   vendor-url:
-    description: 'Kernel Vendor Source Url'
+    description: 'Kernel Vendor Source URL'
     required: false
   kernel-dir:
     required: false
@@ -32,14 +32,14 @@ inputs:
     required: false
     default: main
   config:
-    description: 'configuration for building android kernel'
+    description: 'Configuration for building the kernel'
     required: true
     default: defconfig
   arch:
     required: true
     default: arm64
   android-version:
-    description: 'Android version.'
+    description: 'Android version'
     required: true
     default: ""
   ksu:
@@ -54,7 +54,7 @@ inputs:
     required: false
     default: false
   ksu-url:
-    description: "Use 3rd KernelSU"
+    description: "Use 3rd-party KernelSU"
     required: false
     default: ""
   ksu-lkm:
