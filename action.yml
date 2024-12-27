@@ -158,7 +158,7 @@ runs:
       run: |
          ########
          if [[ ${GITHUB_ACTIONS} != "true" || ${OSTYPE} != "linux-gnu" || ! -f /bin/apt ]]; then
-             printf "This Action Is Intended For Debian-based Runner.\n"
+             #printf "This Action Is Intended For Debian-based Runner.\n"
              exit 127
          fi
 
@@ -168,14 +168,14 @@ runs:
              export SU=sudo
          fi
          if [ -f /usr/bin/docker ]; then
-             echo "::group:: Cleaning necessary disk space"
-             echo "id: ${{ github.sha }}"
+             #echo "::group:: Cleaning necessary disk space"
+             #echo "id: ${{ github.sha }}"
              "$SU" docker image prune --all --force
          fi
          echo "::endgroup::"
 
-         echo "::group:: Installing Building Depend Packages"
-         "$SU" apt-get update
+         #echo "::group:: Installing Building Depend Packages"
+         #"$SU" apt-get update
          "$SU" apt-get install --no-install-recommends -y binutils git make bc bison openssl curl zip kmod cpio flex libelf-dev libssl-dev libtfm-dev libc6-dev device-tree-compiler ca-certificates python3 xz-utils libc6-dev aria2 build-essential ccache
          aria2c -q https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh && NONINTERACTIVE=1 bash ./uninstall.sh -f -q
          echo "::endgroup::"
@@ -226,15 +226,7 @@ runs:
                      aria2c -o aosp-clang.tar.gz https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-${{ inputs.aosp-clang-version }}.tar.gz
                  fi
                  tar -C $HOME/clang -zxf aosp-clang.tar.gz
-             else
-                 echo "Please enable aosp-gcc."
-                 exit 127
              fi
-         elif [ ! -z ${{ inputs.other-clang-url }} ]; then
-             echo "::group:: Downloading Third party clang"
-             export OTHER_CLANG_URL=${{ inputs.other-clang-url }}
-             download_and_extract "$OTHER_CLANG_URL" "clang" "$HOME/clang" "${{ inputs.other-clang-branch }}"
-             [ ! -d $HOME/clang/bin/ ] && mv $HOME/clang/*/* $HOME/clang/
          fi
          echo "::endgroup::"
 
@@ -248,8 +240,6 @@ runs:
                          download_and_extract "$OTHER_GCC64_URL" "gcc-aarch64" "$HOME/gcc-64" "${{ inputs.other-gcc64-branch }}"
                          download_and_extract "$OTHER_GCC32_URL" "gcc-arm" "$HOME/gcc-32" "${{ inputs.other-gcc32-branch }}"
                      fi
-                 else
-                     echo "Error: Please enable third party 'gcc64-url' and 'gcc32-url', and ensure that 'clang' directory exists." && exit 15
                  fi
              else
                  echo "::group:: Downloading AOSP GCC"
