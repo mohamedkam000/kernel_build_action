@@ -200,14 +200,10 @@ runs:
          if [ -d "$HOME/clang/bin" ]; then
               CMD_PATH="$HOME/clang/bin"
               CMD_CC="clang"
-         else
-              CMD_CC="/usr/bin/clang"
-              CMD_CROSS_COMPILE="/usr/bin/aarch64-linux-gnu-"
-              CMD_CLANG_TRIPLE="aarch64-linux-gnu-"
          fi
 
          # setup additional commands
-         COMMAND+=" PATH=${CMD_PATH}:${PATH} CROSS_COMPILE=${CMD_CROSS_COMPILE} CROSS_COMPILE_ARM32=${CMD_CROSS_COMPILE_ARM32} CLANG_TRIPLE=${CMD_CLANG_TRIPLE} CC=${CMD_CC}"
+         COMMAND+=" PATH=${CMD_PATH}:${PATH} CLANG_TRIPLE=${CMD_CLANG_TRIPLE} CC=${CMD_CC}"
 
          # run the command
          ${COMMAND}
