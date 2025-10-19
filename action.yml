@@ -2,7 +2,7 @@ name: 'Android Kernel Build Action'
 
 branding:
   icon: 'activity'
-  color: 'blue'
+  color: 'red'
 
 inputs:
   kernel-url:
@@ -24,78 +24,22 @@ inputs:
   kernel-branch:
     required: false
     default: main
-  vendor-branch:
-    required: false
-    default: main
   config:
     required: true
     default: defconfig
   arch:
     required: true
     default: arm64
-  android-version:
-    required: false
-  ksu:
-    required: false
-    default: false
-  rekernel:
-    required: false
-    default: false
-  ksu-version:
-    required: false
-    default: "main"
-  ksu-other:
-    required: false
-    default: false
-  ksu-url:
-    required: false
-  ksu-lkm:
-    required: false
-    default: false
   disable-lto:
     required: false
     default: false
-  kvm:
-    required: false
-    default: false
-  ccache:
-    required: false
-    default: false
-  aosp-gcc:
-    required: false
-    default: false
-  other-gcc32-url:
-    required: false
-  other-gcc32-branch:
-    required: false
-    default: main
-  other-gcc64-url:
-    required: false
-  other-gcc64-branch:
-    required: false
-    default: main
   aosp-clang:
     required: false
     default: true
-  aosp-clang-version:
-    required: false
-    default: "r547379"
-  other-clang-url:
-    required: false
-  other-clang-branch:
-    required: false
-    default: main
   anykernel3:
     required: false
     default: true
   anykernel3-url:
-    required: false
-  bootimg-url:
-    required: false
-  release:
-    required: false
-    default: false
-  access-token:
     required: false
   extra-cmd:
     required: false
@@ -110,13 +54,11 @@ runs:
         #!/bin/bash
         set -euo pipefail
 
-        # Function to display error messages and exit
         error() {
             echo "Error: $1" >&2
             exit 1
         }
 
-        # Function to run a command with sudo if not already root
         SU() {
             if [ "$(id -u)" -eq 0 ]; then
                 "$@"
@@ -125,7 +67,6 @@ runs:
             fi
         }
 
-        # Function to download and extract a file
         download_and_extract() {
             local url=$1
             local output_name=$2
@@ -157,35 +98,20 @@ runs:
             python3 xz-utils aria2 build-essential pigz coccinelle parallel
         echo "::endgroup::"
 
-        # Download and set up the toolchain
         if [ "${{ inputs.aosp-clang }}" == "true" ]; then
             echo "::group::Downloading AOSP Clang"
             AOSP_CLANG_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz"
             download_and_extract "$AOSP_CLANG_URL" "aosp-clang" "$HOME/clang"
             echo "::endgroup::"
-        else
-            SU apt-get install -y clang lld binutils-aarch64-linux-gnu binutils-arm-linux-gnuabeihf
         fi
 
-        # Clone the kernel source
-        echo "::group::Pulling Kernel Source"
+        echo "::group:: Cloning Kernel Source"
         git clone --recursive -b "${{ inputs.kernel-branch }}" --depth="${{ inputs.depth }}" "${{ inputs.kernel-url }}" "kernel/${{ inputs.kernel-dir }}"
         echo "::endgroup::"
 
         cd "kernel/${{ inputs.kernel-dir }}"
 
-        # Disable LTO if specified
-        if [ "${{ inputs.disable-lto }}" == "true" ]; then
-            if grep -q "LTO" "arch/${{ inputs.arch }}/configs/${{ inputs.config }}"; then
-                sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' "arch/${{ inputs.arch }}/configs/${{ inputs.config }}"
-                sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' "arch/${{ inputs.arch }}/configs/${{ inputs.config }}"
-                sed -i 's/CONFIG_THINLTO=y/CONFIG_THINLTO=n/' "arch/${{ inputs.arch }}/configs/${{ inputs.config }}"
-                echo "CONFIG_LTO_NONE=y" >> "arch/${{ inputs.arch }}/configs/${{ inputs.config }}"
-            fi
-        fi
-
-        # Build the kernel
-         echo "::group:: Building Kernel with selected cross compiler"
+         echo "::group:: Building Kernel"
          EXTRA_CMD="${{ inputs.extra-cmd }}"
          if [[ -n "$EXTRA_CMD" && ! "$EXTRA_CMD" =~ ^[a-zA-Z0-9_=+./,\ -]*$ ]]; then
              echo "::error::extra-cmd contains invalid characters. Only letters, digits, _=+./,- and spaces are allowed." >&2
@@ -224,11 +150,7 @@ runs:
                 sed -i 's/IS_SLOT_DEVICE=0;/IS_SLOT_DEVICE=auto;/g' AnyKernel3/anykernel.sh
             fi
 
-            if [ -f out/arch/${{ inputs.arch }}/boot/Image.*-dtb ]; then
-                if ! find out/arch/${{ inputs.arch }}/boot -name "Image.*-dtb" -exec cp -rv {} AnyKernel3/ \; 2>/dev/null; then
-                    error "Failed to copy kernel Image with dtb"
-                fi
-            elif [ -f out/arch/${{ inputs.arch }}/boot/Image.* ]; then
+            if [ -f out/arch/${{ inputs.arch }}/boot/Image.* ]; then
                 if ! find out/arch/${{ inputs.arch }}/boot -name "Image.*" ! -name "Image.*-dtb" -exec cp -rv {} AnyKernel3/ \; 2>/dev/null; then
                     error "Failed to copy compressed kernel Image"
                 fi
@@ -237,20 +159,6 @@ runs:
                     error "Kernel Image not found"
                 fi
                 cp out/arch/${{ inputs.arch }}/boot/Image AnyKernel3/ -rv
-            fi
-
-            if [ -f out/arch/${{ inputs.arch }}/boot/dtbo.img ]; then
-                cp out/arch/${{ inputs.arch }}/boot/dtbo.img AnyKernel3/ -rv
-            else
-                echo "Failed to copy DTBO image. File not found."
-            fi
-
-            if [ -f out/arch/${{ inputs.arch }}/boot/dtb.img ]; then
-                cp out/arch/${{ inputs.arch }}/boot/dtb.img AnyKernel3/ -rv
-            elif [ -f out/arch/${{ inputs.arch }}/boot/dtb ]; then
-                cp out/arch/${{ inputs.arch }}/boot/dtb AnyKernel3/ -rv
-            else
-                echo "Failed to copy dtb. File not found."
             fi
 
             rm -rf -v AnyKernel3/.git* AnyKernel3/README.md
@@ -263,15 +171,6 @@ runs:
             echo "::endgroup::"
         fi
 
-    - id: uploadi
-      if: ${{ inputs.release == 'false' && inputs.anykernel3 == 'false' }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: kernel-built-bootimg
-        path: build/*
-        if-no-files-found: error
-        overwrite: true
-
     - id: uploada
       if: ${{ inputs.release == 'false' && inputs.anykernel3 == 'true' }}
       uses: actions/upload-artifact@v4
@@ -280,29 +179,3 @@ runs:
         path: build/*
         if-no-files-found: error
         overwrite: true
-
-    - id: release
-      if: inputs.release == 'true'
-      uses: softprops/action-gh-release@v2
-      env:
-        GITHUB_TOKEN: ${{ inputs.access-token }}
-      with:
-        name: Last CI build kernel
-        tag_name: last-ci-${{ github.sha }}
-        files: build/*
-        make_latest: true
-        body: |
-          Build Information:
-          - Config: ${{ inputs.config }}
-          - Branch: ${{ inputs.kernel-branch }}
-          - Source: ${{ inputs.kernel-url }}
-          - Architecture: ${{ inputs.arch }}
-
-          Features:
-          - KVM: ${{ inputs.kvm }}
-
-          Build Details:
-          - Timestamp: ${{ github.event.repository.updated_at }}
-          - Workflow: ${{ github.workflow }}
-          - Run ID: ${{ github.run_id }}
-          - Commit: ${{ github.sha }}
