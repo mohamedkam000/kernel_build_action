@@ -55,18 +55,6 @@ inputs:
   disable-lto:
     required: false
     default: false
-  lxc:
-    required: false
-    default: false
-  lxc-patch:
-    required: false
-    default: false
-  nethunter:
-    required: false
-    default: false
-  nethunter-patch:
-    required: false
-    default: false
   kvm:
     required: false
     default: false
@@ -115,14 +103,6 @@ inputs:
 runs:
   using: 'composite'
   steps:
-
-    - name: Setup ccache
-      if: inputs.ccache == 'true'
-      uses: hendrikmuhs/ccache-action@v1.2
-      with:
-        key: ${{ inputs.config }}-0cb68f9cbcbb3de9c966cf66ed51471fbe51419e
-        max-size: 4G
-        create-symlink: true
 
     - name: Build Kernel
       shell: bash
@@ -179,15 +159,12 @@ runs:
         SU apt-get install --no-install-recommends -y \
             binutils git make bc bison openssl curl zip kmod cpio flex libelf-dev \
             libssl-dev libtfm-dev libc6-dev device-tree-compiler ca-certificates \
-            python3 xz-utils aria2 build-essential ccache pigz coccinelle parallel
+            python3 xz-utils aria2 build-essential pigz coccinelle parallel
         echo "::endgroup::"
 
         # Download and set up the toolchain
         if [ "${{ inputs.aosp-clang }}" == "true" ]; then
             echo "::group::Downloading AOSP Clang"
-            if [ "${{ inputs.aosp-gcc }}" != "true" ]; then
-                error "AOSP GCC is required when using AOSP Clang."
-            fi
             AOSP_CLANG_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/"
             if [ -n "${{ inputs.android-version }}" ]; then
                 AOSP_CLANG_URL+="android${{ inputs.android-version }}-release/clang-${{ inputs.aosp-clang-version }}.tar.gz"
@@ -249,60 +226,6 @@ runs:
         NONGKI=false
         if [ "$VERSION" -lt 5 ] 2>/dev/null || { [ "$VERSION" -eq 5 ] 2>/dev/null && [ "$PATCHLEVEL" -lt 10 ] 2>/dev/null; }; then
             NONGKI=true
-        fi
-
-        # Initialize KernelSU if enabled
-        if [ "${{ inputs.ksu }}" == "true" ]; then
-            echo "::group::Initializing KernelSU"
-            if [ -f KernelSU/kernel/Kconfig ]; then
-                echo "KernelSU has been initialized, skipping."
-            else
-                # Download the KernelSU setup script
-                if [ "${{ inputs.ksu-other }}" == "true" ]; then
-                    if [ -z "${{ inputs.ksu-url }}" ]; then
-                        error "ksu-url is required when ksu-other is true"
-                    fi
-                    curl -sSLf "${{ inputs.ksu-url }}/raw/${{ inputs.ksu-version }}/kernel/setup.sh" -o ksu_setup.sh || error "Failed to download KernelSU setup script"
-                else
-                    curl -sSLf "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" -o ksu_setup.sh || error "Failed to download KernelSU setup script"
-                fi
-
-                # Determine the KernelSU version to use
-                echo "Kernel version: $VERSION.$PATCHLEVEL.$SUBLEVEL"
-                KVER="${{ inputs.ksu-version }}"
-                if [ "$NONGKI" == "true" ] && [ "${{ inputs.ksu-other }}" == "false" ]; then
-                    echo "Warning: The KernelSU version you selected was detected to be ${{ inputs.ksu-version }}, but KernelSU has dropped support for the non-gki kernel since 0.9.5."
-                    echo "This will force switch to v0.9.5."
-                    KVER=v0.9.5
-                fi
-
-                # Execute the KernelSU setup script
-                bash ksu_setup.sh "$KVER" || error "Failed to execute KernelSU setup script"
-            fi
-
-            # Configure KernelSU
-            CONFIG_FILE="arch/${{ inputs.arch }}/configs/${{ inputs.config }}"
-            if [ "${{ inputs.ksu-lkm }}" == "true" ]; then
-                # Build KernelSU as a loadable kernel module
-                if grep -q "CONFIG_KPROBES=y" "$CONFIG_FILE"; then
-                    sed -i 's/CONFIG_KSU=y/CONFIG_KSU=m/g' "$CONFIG_FILE"
-                else
-                    sed -i '/config KSU/,/help/{s/default y/default m/}' drivers/kernelsu/Kconfig
-                fi
-            elif [ "$NONGKI" == "true" ]; then
-                # Apply patches for non-GKI kernels
-                if grep -q "CONFIG_KPROBES=y" "$CONFIG_FILE" 2>/dev/null; then
-                    echo "CONFIG_KPROBES is enabled, skip patch."
-                else
-                    if curl -sSLf "${{ github.action_path }}/kernelsu/apply_cocci.sh" -o /tmp/apply_cocci.sh; then
-                        bash /tmp/apply_cocci.sh || echo "Warning: Failed to apply KernelSU patches"
-                        rm -f /tmp/apply_cocci.sh
-                    else
-                        echo "Warning: Failed to download apply_cocci.sh"
-                    fi
-                fi
-            fi
-            echo "::endgroup::"
         fi
 
         # Disable LTO if specified
@@ -508,7 +431,6 @@ runs:
           - Architecture: ${{ inputs.arch }}
 
           Features:
-          - KernelSU: ${{ inputs.ksu }}
           - KVM: ${{ inputs.kvm }}
 
           Build Details:
