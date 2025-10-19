@@ -163,23 +163,6 @@ runs:
             AOSP_CLANG_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz"
             download_and_extract "$AOSP_CLANG_URL" "aosp-clang" "$HOME/clang"
             echo "::endgroup::"
-        elif [ -n "${{ inputs.other-clang-url }}" ]; then
-            echo "::group::Downloading Third-party Clang"
-            download_and_extract "${{ inputs.other-clang-url }}" "clang" "$HOME/clang" "${{ inputs.other-clang-branch }}"
-            if [ ! -d "$HOME/clang/bin" ]; then
-                # Move nested directories up if bin is not at the expected location
-                for dir in "$HOME/clang"/*/*; do
-                    if [ -d "$dir" ]; then
-                        mv "$dir"/* "$HOME/clang/" 2>/dev/null || true
-                        break
-                    fi
-                done
-            fi
-            if ! ls "$HOME/clang"/*-linux-* &>/dev/null; then
-                echo "Binutils not found in clang directory. Downloading AOSP GCC"
-                export NEED_GCC=1
-            fi
-            echo "::endgroup::"
         else
             SU apt-get install -y clang lld binutils-aarch64-linux-gnu binutils-arm-linux-gnuabeihf
         fi
@@ -191,22 +174,6 @@ runs:
 
         cd "kernel/${{ inputs.kernel-dir }}"
 
-        # Get kernel version
-        VERSION=$(grep -E '^VERSION = ' Makefile | awk '{print $3}')
-        PATCHLEVEL=$(grep -E '^PATCHLEVEL = ' Makefile | awk '{print $3}')
-        SUBLEVEL=$(grep -E '^SUBLEVEL = ' Makefile | awk '{print $3}')
-
-        # Validate kernel version
-        if [ -z "$VERSION" ] || [ -z "$PATCHLEVEL" ]; then
-            error "Failed to extract kernel version from Makefile"
-        fi
-
-        # Check for non-GKI kernel for KernelSU
-        NONGKI=false
-        if [ "$VERSION" -lt 5 ] 2>/dev/null || { [ "$VERSION" -eq 5 ] 2>/dev/null && [ "$PATCHLEVEL" -lt 10 ] 2>/dev/null; }; then
-            NONGKI=true
-        fi
-
         # Disable LTO if specified
         if [ "${{ inputs.disable-lto }}" == "true" ]; then
             if grep -q "LTO" "arch/${{ inputs.arch }}/configs/${{ inputs.config }}"; then
@@ -215,14 +182,6 @@ runs:
                 sed -i 's/CONFIG_THINLTO=y/CONFIG_THINLTO=n/' "arch/${{ inputs.arch }}/configs/${{ inputs.config }}"
                 echo "CONFIG_LTO_NONE=y" >> "arch/${{ inputs.arch }}/configs/${{ inputs.config }}"
             fi
-        fi
-
-        # Enable KVM if specified
-        if [ "${{ inputs.kvm }}" == "true" ]; then
-            echo "CONFIG_VIRTUALIZATION=y" >> "arch/${{ inputs.arch }}/configs/${{ inputs.config }}"
-            echo "CONFIG_KVM=y" >> "arch/${{ inputs.arch }}/configs/${{ inputs.config }}"
-            echo "CONFIG_KVM_MMIO=y" >> "arch/${{ inputs.arch }}/configs/${{ inputs.config }}"
-            echo "CONFIG_KVM_ARM_HOST=y" >> "arch/${{ inputs.arch }}/configs/${{ inputs.config }}"
         fi
 
         # Build the kernel
@@ -244,32 +203,7 @@ runs:
          else
               CMD_CC="/usr/bin/clang"
               CMD_CROSS_COMPILE="/usr/bin/aarch64-linux-gnu-"
-              CMD_CROSS_COMPILE_ARM32="arm-linux-gnuabeihf-"
               CMD_CLANG_TRIPLE="aarch64-linux-gnu-"
-         fi
-
-         if [ ${{ inputs.ccache }} = true ]; then
-              # enable ccache
-              export USE_CCACHE=1
-              export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
-
-              # ensure /usr/lib/ccache is first inside CMD_PATH
-              test -f /usr/bin/ccache && $SU rm -v /usr/bin/ccache
-              CMD_PATH="/usr/lib/ccache:${CMD_PATH}"
-
-              # verify compiler exist in /usr/lib/ccache
-              if [ -d "${HOME}/clang/bin" ]; then
-                  [ ! -e /usr/lib/clang ] && \
-                      ln -s /usr/lib/clang /usr/bin/ccache
-              else
-                  if [ -n "${GCC64}" ]; then
-                      [ ! -e "/usr/lib/${GCC64}-gcc" ] && \
-                          ln -s "/usr/lib/${GCC64}-gcc" /usr/bin/ccache
-                  else
-                      [ ! -e "/usr/lib/${GCC32}-gcc" ] && \
-                          ln -s "/usr/lib/${GCC32}-gcc" /usr/bin/ccache
-                  fi
-              fi
          fi
 
          # setup additional commands
