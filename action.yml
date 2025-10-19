@@ -1,5 +1,4 @@
 name: 'Android Kernel Build Action'
-description: "An action to build android kernel."
 
 branding:
   icon: 'activity'
@@ -36,7 +35,6 @@ inputs:
     default: arm64
   android-version:
     required: false
-    default: ""
   ksu:
     required: false
     default: false
@@ -90,10 +88,10 @@ inputs:
     default: main
   aosp-clang:
     required: false
-    default: false
+    default: true
   aosp-clang-version:
     required: false
-    default: "r383902"
+    default: "r547379"
   other-clang-url:
     required: false
   other-clang-branch:
@@ -101,7 +99,7 @@ inputs:
     default: main
   anykernel3:
     required: false
-    default: false
+    default: true
   anykernel3-url:
     required: false
   bootimg-url:
@@ -219,53 +217,6 @@ runs:
             SU apt-get install -y clang lld binutils-aarch64-linux-gnu binutils-arm-linux-gnuabeihf
         fi
 
-        if [ "${{ inputs.aosp-gcc }}" == "true" ] || [ -n "${NEED_GCC:-}" ]; then
-            echo "::group::Downloading AOSP GCC"
-            if [ -n "${{ inputs.android-version }}" ]; then
-                AOSP_GCC64_URL="https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9"
-                AOSP_GCC32_URL="https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9"
-                AOSP_GCC_BRANCH="android${{ inputs.android-version }}-release"
-            else
-                AOSP_GCC64_URL="https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz"
-                AOSP_GCC32_URL="https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz"
-            fi
-            download_and_extract "$AOSP_GCC64_URL" "gcc-aarch64" "$HOME/gcc-64" "${AOSP_GCC_BRANCH:-main}"
-            download_and_extract "$AOSP_GCC32_URL" "gcc-arm" "$HOME/gcc-32" "${AOSP_GCC_BRANCH:-main}"
-            echo "::endgroup::"
-        elif [ -n "${{ inputs.other-gcc64-url }}" ] || [ -n "${{ inputs.other-gcc32-url }}" ]; then
-            echo "::group::Downloading Third-party GCC"
-            if [ -n "${{ inputs.other-gcc64-url }}" ]; then
-                download_and_extract "${{ inputs.other-gcc64-url }}" "gcc-aarch64" "$HOME/gcc-64" "${{ inputs.other-gcc64-branch }}"
-            fi
-            if [ -n "${{ inputs.other-gcc32-url }}" ]; then
-                download_and_extract "${{ inputs.other-gcc32-url }}" "gcc-arm" "$HOME/gcc-32" "${{ inputs.other-gcc32-branch }}"
-            fi
-            echo "::endgroup::"
-        fi
-
-        if [ -d "$HOME/gcc-64" ]; then
-            if [ ! -d "$HOME/gcc-64/bin" ]; then
-                # Move nested directories up if bin is not at the expected location
-                for dir in "$HOME/gcc-64"/*/*; do
-                    if [ -d "$dir" ]; then
-                        mv "$dir"/* "$HOME/gcc-64/" 2>/dev/null || true
-                        break
-                    fi
-                done
-            fi
-        fi
-        if [ -d "$HOME/gcc-32" ]; then
-            if [ ! -d "$HOME/gcc-32/bin" ]; then
-                # Move nested directories up if bin is not at the expected location
-                for dir in "$HOME/gcc-32"/*/*; do
-                    if [ -d "$dir" ]; then
-                        mv "$dir"/* "$HOME/gcc-32/" 2>/dev/null || true
-                        break
-                    fi
-                done
-            fi
-        fi
-
         # Clone the kernel source
         echo "::group::Pulling Kernel Source"
         git clone --recursive -b "${{ inputs.kernel-branch }}" --depth="${{ inputs.depth }}" "${{ inputs.kernel-url }}" "kernel/${{ inputs.kernel-dir }}"
@@ -283,34 +234,6 @@ runs:
         fi
 
         cd "kernel/${{ inputs.kernel-dir }}"
-
-        # Set up GCC-related variables
-        if [ -d "$HOME/gcc-64/bin" ] || [ -d "$HOME/gcc-32/bin" ]; then
-            for GCC_DIR in "$HOME/gcc-64" "$HOME/gcc-32"; do
-                find "$GCC_DIR"/*/*/bin -type d -exec sh -c 'mv "$(dirname "$1")"/* "$2"/' _ {} "$GCC_DIR" \; -quit >/dev/null 2>&1 || true
-                if [ -d "$GCC_DIR/bin" ]; then
-                    for FILE in "$GCC_DIR/bin"/*; do
-                        [ ! -e "$FILE" ] && continue
-                        FILE_NAME=$(basename "$FILE")
-                        MATCHED_DIR=""
-                        while IFS= read -r FOLDER; do
-                            FOLDER_NAME=$(basename "$FOLDER")
-                            if [[ "$FILE_NAME" == "$FOLDER_NAME"* ]]; then
-                                MATCHED_DIR="$FOLDER_NAME"
-                                break
-                            fi
-                        done < <(find "$GCC_DIR" -mindepth 1 -maxdepth 1 -type d | sort -r)
-                        if [ -n "$MATCHED_DIR" ]; then
-                            case "$GCC_DIR" in
-                                "$HOME/gcc-64") GCC64="$MATCHED_DIR" ;;
-                                "$HOME/gcc-32") GCC32="$MATCHED_DIR" ;;
-                            esac
-                            break
-                        fi
-                    done
-                fi
-            done
-        fi
 
         # Get kernel version
         VERSION=$(grep -E '^VERSION = ' Makefile | awk '{print $3}')
@@ -382,54 +305,6 @@ runs:
             echo "::endgroup::"
         fi
 
-        # Initialize Re-Kernel if enabled
-        if [ "${{ inputs.rekernel }}" == "true" ]; then
-            echo "::group::Initializing Re-Kernel"
-            if curl -sSLf "${{ github.action_path }}/rekernel/patch.sh" -o /tmp/rekernel_patch.sh; then
-                bash /tmp/rekernel_patch.sh || error "Failed to apply Re-Kernel patches"
-                rm -f /tmp/rekernel_patch.sh
-            else
-                error "Failed to download Re-Kernel patch script"
-            fi
-            echo "::endgroup::"
-        fi
-
-        # Use Python3 version of mkdtboimg.py
-        if [ -f scripts/dtc/libfdt/mkdtboimg.py ]; then
-            if grep -q python2 scripts/Makefile.lib 2>/dev/null; then
-                echo "::group::Using mkdtboimg Python3 version instead of Python2 version"
-                rm -f scripts/dtc/libfdt/mkdtboimg.py
-                cp -v "${{ github.action_path }}/mkdtboimg.py" scripts/dtc/libfdt/mkdtboimg.py
-                echo "::endgroup::"
-            elif grep -q scripts/ufdt scripts/Makefile.lib 2>/dev/null && [ ! -d scripts/ufdt ]; then
-                mkdir -p ufdt/libufdt/utils/src
-                cp -v "${{ github.action_path }}/mkdtboimg.py" ufdt/libufdt/utils/src/mkdtboimg.py
-            fi
-            if [ ! -f /usr/bin/python2 ]; then
-                SU ln -sf /usr/bin/python3 /usr/bin/python2
-            fi
-        else
-            echo "::group::Downloading mkdtboimg to /usr/local/bin"
-            SU cp -v "${{ github.action_path }}/mkdtboimg.py" /usr/local/bin/mkdtboimg
-            SU chmod +x /usr/local/bin/mkdtboimg
-            echo "::endgroup::"
-        fi
-
-        # Initialize Kali NetHunter if enabled
-        if [ "${{ inputs.nethunter }}" == "true" ]; then
-            echo "::group::Initializing Kali NetHunter"
-            cp -v "${{ github.action_path }}/nethunter/config.sh" nconfig.sh
-            bash nconfig.sh "arch/${{ inputs.arch }}/configs/${{ inputs.config }}" -w
-            if [ "${{ inputs.nethunter-patch }}" == "true" ]; then
-                git apply "${{ github.action_path }}/nethunter/add-wifi-injection.patch"
-                git apply "${{ github.action_path }}/nethunter/fix-ath9k-naming-conflict.patch"
-                if [ "$PATCHLEVEL" -lt 19 ]; then
-                    git apply "${{ github.action_path }}/nethunter/add-wifi-injection-4.14.patch"
-                fi
-            fi
-            echo "::endgroup::"
-        fi
-
         # Disable LTO if specified
         if [ "${{ inputs.disable-lto }}" == "true" ]; then
             if grep -q "LTO" "arch/${{ inputs.arch }}/configs/${{ inputs.config }}"; then
@@ -448,17 +323,6 @@ runs:
             echo "CONFIG_KVM_ARM_HOST=y" >> "arch/${{ inputs.arch }}/configs/${{ inputs.config }}"
         fi
 
-        # Enable LXC if specified
-        if [ "${{ inputs.lxc }}" == "true" ]; then
-            echo "::group::Enabling LXC"
-            cp -v "${{ github.action_path }}/lxc/config.sh" config.sh
-            bash config.sh "arch/${{ inputs.arch }}/configs/${{ inputs.config }}" -w
-            if [ "${{ inputs.lxc-patch }}" == "true" ]; then
-                curl -sSL "${{ github.action_path }}/lxc/patch.sh" | bash
-            fi
-            echo "::endgroup::"
-        fi
-
         # Build the kernel
          echo "::group:: Building Kernel with selected cross compiler"
          EXTRA_CMD="${{ inputs.extra-cmd }}"
@@ -475,21 +339,6 @@ runs:
          if [ -d "$HOME/clang/bin" ]; then
               CMD_PATH="$HOME/clang/bin"
               CMD_CC="clang"
-              if [ -d "$HOME/gcc-64/bin" ] || [ -d "$HOME/gcc-32/bin" ]; then
-                  CMD_CROSS_COMPILE="$HOME/gcc-64/bin/${GCC64}-"
-                  CMD_CROSS_COMPILE_ARM32="$HOME/gcc-32/bin/${GCC32}-"
-                  CMD_CLANG_TRIPLE="aarch64-linux-gnu-"
-              fi
-         elif [ -d "$HOME/gcc-64/bin" ] || [ -d "$HOME/gcc-32/bin" ]; then
-              CMD_PATH="$HOME/gcc-64/bin:$HOME/gcc-32/bin"
-              if [ -n "${GCC64}" ]; then
-                  CMD_CC="$HOME/gcc-64/bin/${GCC64}-gcc"
-              else
-                  CMD_CC="$HOME/gcc-32/bin/${GCC32}-gcc"
-              fi
-              CMD_CROSS_COMPILE="${GCC64}-"
-              CMD_CROSS_COMPILE_ARM32="${GCC32}-"
-              CMD_CLANG_TRIPLE="aarch64-linux-gnu-"
          else
               CMD_CC="/usr/bin/clang"
               CMD_CROSS_COMPILE="/usr/bin/aarch64-linux-gnu-"
@@ -660,11 +509,7 @@ runs:
 
           Features:
           - KernelSU: ${{ inputs.ksu }}
-          - NetHunter: ${{ inputs.nethunter }}
-          - LXC: ${{ inputs.lxc }}
-          - Docker: ${{ inputs.docker }}
           - KVM: ${{ inputs.kvm }}
-          - Rekernel: ${{ inputs.rekernel }}
 
           Build Details:
           - Timestamp: ${{ github.event.repository.updated_at }}
