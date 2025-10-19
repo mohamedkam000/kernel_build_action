@@ -148,11 +148,6 @@ runs:
             esac
         }
 
-        # Check if the action is running on a Debian-based runner
-        if [[ ${GITHUB_ACTIONS} != "true" || ${OSTYPE} != "linux-gnu" || ! -f /bin/apt ]]; then
-            error "This action is intended for Debian-based runners."
-        fi
-
         # Install dependencies
         echo "::group::Installing Building Depend Packages"
         SU apt-get update
@@ -165,12 +160,7 @@ runs:
         # Download and set up the toolchain
         if [ "${{ inputs.aosp-clang }}" == "true" ]; then
             echo "::group::Downloading AOSP Clang"
-            AOSP_CLANG_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/"
-            if [ -n "${{ inputs.android-version }}" ]; then
-                AOSP_CLANG_URL+="android${{ inputs.android-version }}-release/clang-${{ inputs.aosp-clang-version }}.tar.gz"
-            else
-                AOSP_CLANG_URL+="mirror-goog-main-llvm-toolchain-source/clang-${{ inputs.aosp-clang-version }}.tar.gz"
-            fi
+            AOSP_CLANG_URL="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r547379.tar.gz"
             download_and_extract "$AOSP_CLANG_URL" "aosp-clang" "$HOME/clang"
             echo "::endgroup::"
         elif [ -n "${{ inputs.other-clang-url }}" ]; then
@@ -198,17 +188,6 @@ runs:
         echo "::group::Pulling Kernel Source"
         git clone --recursive -b "${{ inputs.kernel-branch }}" --depth="${{ inputs.depth }}" "${{ inputs.kernel-url }}" "kernel/${{ inputs.kernel-dir }}"
         echo "::endgroup::"
-
-        # Clone the vendor kernel source if specified
-        if [ "${{ inputs.vendor }}" == "true" ]; then
-            echo "::group::Pulling Kernel Vendor Source"
-            git clone -b "${{ inputs.vendor-branch }}" --depth="${{ inputs.depth }}" "${{ inputs.vendor-url }}" "kernel/${{ inputs.vendor-dir }}"
-            if [ -d "kernel/${{ inputs.vendor-dir }}/vendor" ]; then
-                cp -rv "kernel/${{ inputs.vendor-dir }}/vendor" kernel
-                cp -rv "kernel/${{ inputs.vendor-dir }}/vendor" ./
-            fi
-            echo "::endgroup::"
-        fi
 
         cd "kernel/${{ inputs.kernel-dir }}"
 
